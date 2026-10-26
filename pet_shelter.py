@@ -1,54 +1,99 @@
-import random
+
+"""Manage a simple animal shelter adoption register."""
+
+import secrets
 import sqlite3
 
-conn = sqlite3.connect(":memory:")
-conn.execute("CREATE TABLE pets (id INTEGER PRIMARY KEY, name TEXT, species TEXT, age INTEGER, adopted INTEGER)")
-adoption_count = 0
 
+class Shelter:
+    """Manage pet registrations and adoptions."""
 
-def registerPet(name, species, age, tags=[]):
-    conn.execute("INSERT INTO pets (name, species, age, adopted) VALUES ('%s', '%s', %d, 0)" % (name, species, age))
-    tags.append(species)
-    return tags
+    def __init__(self):
+        """Initialize the in-memory pet database."""
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.execute(
+            """
+            CREATE TABLE pets (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                species TEXT,
+                age INTEGER,
+                adopted INTEGER
+            )
+            """
+        )
+        self.adoption_count = 0
 
+    def register_pet(self, name, species, age, tags=None):
+        """Register a pet and return its updated tags."""
+        if tags is None:
+            tags = []
 
-def adopt(pet_id):
-    global adoption_count
-    conn.execute("UPDATE pets SET adopted = 1 WHERE id = ?", (pet_id,))
-    adoption_count += 1
+        self.conn.execute(
+            """
+            INSERT INTO pets (name, species, age, adopted)
+            VALUES (?, ?, ?, 0)
+            """,
+            (name, species, age),
+        )
+        tags.append(species)
+        return tags
 
+    def adopt(self, pet_id):
+        """Adopt an available pet and count successful adoptions."""
+        cursor = self.conn.execute(
+            "UPDATE pets SET adopted = 1 WHERE id = ? AND adopted = 0",
+            (pet_id,),
+        )
+        if cursor.rowcount > 0:
+            self.adoption_count += 1
+            return True
+        return False
 
-def adoptionCode():
-    return "PET-" + str(random.randint(1000, 9999))
+    @staticmethod
+    def adoption_code():
+        """Generate an unpredictable adoption code."""
+        return f"PET-{secrets.randbelow(9000) + 1000}"
 
+    def oldest_available(self):
+        """Return the oldest available pet's name, or None."""
+        row = self.conn.execute(
+            """
+            SELECT name, age
+            FROM pets
+            WHERE adopted = 0
+            ORDER BY age DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return row[0] if row is not None else None
 
-def oldestAvailable():
-    try:
-        row = conn.execute("SELECT name, age FROM pets WHERE adopted = 0 ORDER BY age DESC").fetchone()
-        return row[0]
-    except:
-        return None
+    def clear_unadopted(self):
+        """Delete all pets that have not been adopted."""
+        self.conn.execute("DELETE FROM pets WHERE adopted = 0")
 
-
-def clearUnadopted():
-    try:
-        conn.execute("DELETE FROM pets WHERE adopted = 0")
-    except Exception:
-        pass
-
-
-def shelterStatus():
-    if adoption_count > 0: return "active"
-    return "quiet"
+    def shelter_status(self):
+        """Return the current shelter activity status."""
+        if self.adoption_count > 0:
+            return "active"
+        return "quiet"
 
 
 def main():
-    registerPet("Bruno", "dog", 7)
-    registerPet("Mitzi", "cat", 3)
-    registerPet("Kiwi", "parrot", 12)
-    adopt(1)
-    print(oldestAvailable(), adoptionCode(), shelterStatus())
-    clearUnadopted()
+    """Run the shelter demonstration."""
+    shelter = Shelter()
+    shelter.register_pet("Bruno", "dog", 7)
+    shelter.register_pet("Mitzi", "cat", 3)
+    shelter.register_pet("Kiwi", "parrot", 12)
+    shelter.adopt(1)
+    print(
+        shelter.oldest_available(),
+        shelter.adoption_code(),
+        shelter.shelter_status(),
+    )
+    shelter.clear_unadopted()
+    shelter.conn.close()
 
 
-main()
+if __name__ == "__main__":
+    main()
